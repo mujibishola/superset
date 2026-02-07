@@ -2531,11 +2531,14 @@ BRAND_SPINNER_SVG: str | None = None  # inline SVG markup as a string
 # -----------------------------------------------------------------------------
 # API Response Redaction (Security)
 # -----------------------------------------------------------------------------
-# Redact raw SQL from chart data API JSON responses. Frontend typically doesn't
-# rely on the SQL text, so redacting avoids leaking sensitive queries.
+# Redact raw SQL from chart data API JSON responses to avoid leaking sensitive
+# queries. The frontend does not depend on SQL text for chart rendering.
 #
-# By default this is disabled to avoid surprising environments that post-process
-# the API output. Enable in production.
+# Behavior:
+# - Always bypassed in development mode (FLASK_ENV/ENV=development or app.debug)
+# - Always redacted for guest users
+# - For authenticated users, redacted unless the user holds any role in the
+#   allow-list below
 REDACT_SQL_IN_CHART_API: bool = True
 # Roles allowed to receive SQL in API responses when redaction is enabled.
 # Typically keep Admin only. Use role names as strings.

@@ -453,6 +453,16 @@ class ChartDataRestApi(ChartRestApi):
             except Exception:
                 redact_all = False
 
+            # In development, do not redact to ease local debugging
+            dev_mode = False
+            try:
+                dev_mode = bool(getattr(app, "debug", False)) or (
+                    str(app.config.get("ENV", "")).lower() == "development"
+                    or str(app.config.get("FLASK_ENV", "")).lower() == "development"
+                )
+            except Exception:
+                dev_mode = False
+
             should_redact = security_manager.is_guest_user() or redact_all
             if redact_all and not security_manager.is_guest_user():
                 try:
@@ -461,13 +471,18 @@ class ChartDataRestApi(ChartRestApi):
                             "REDACT_SQL_IN_CHART_API_ALLOW_ROLES", ["Admin"]
                         )
                     )
-                    user_roles = set(r.name for r in (getattr(g, "user", None) or []).roles)  # type: ignore[attr-defined]
+                    user = getattr(g, "user", None)  # type: ignore[attr-defined]
+                    roles = getattr(user, "roles", []) if user is not None else []
+                    user_roles = set(getattr(r, "name", None) for r in roles if getattr(r, "name", None))
                     # If user has any role in allowlist, don't redact
                     if allow_roles & user_roles:
                         should_redact = False
                 except Exception:
                     # If role detection fails, keep redaction enabled for safety
                     should_redact = True
+
+            if dev_mode:
+                should_redact = False
 
             if should_redact:
                 for query in queries:
