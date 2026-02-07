@@ -64,7 +64,6 @@ from superset.superset_typing import FlaskResponse
 from superset.themes.types import Theme, ThemeMode
 from superset.themes.utils import (
     is_valid_theme,
-    sanitize_theme_tokens,
 )
 from superset.utils import core as utils, json
 from superset.utils.filters import get_dataset_access_filters
@@ -400,22 +399,8 @@ def get_theme_bootstrap_data() -> dict[str, Any]:
     default_theme = _process_theme(default_theme, ThemeMode.DEFAULT)
     dark_theme = _process_theme(dark_theme, ThemeMode.DARK)
 
-    # Inject branded loader tokens from config if provided
-    brand_spinner_url = app.config.get("BRAND_SPINNER_URL")
-    brand_spinner_svg = app.config.get("BRAND_SPINNER_SVG")
-    overlay_token: dict[str, Any] = {}
-    if brand_spinner_url:
-        overlay_token["brandSpinnerUrl"] = brand_spinner_url
-    if brand_spinner_svg:
-        overlay_token["brandSpinnerSvg"] = brand_spinner_svg
-    if overlay_token:
-        overlay_theme = {"token": overlay_token}
-        default_theme = sanitize_theme_tokens(
-            _merge_theme_dicts(default_theme or {}, overlay_theme)
-        )
-        dark_theme = sanitize_theme_tokens(
-            _merge_theme_dicts(dark_theme or {}, overlay_theme)
-        )
+    # Note: brand spinner/logo tokens are managed by UI-admin themes or THEME_DEFAULT/THEME_DARK.
+    # We no longer inject BRAND_SPINNER_URL/SVG here to keep UI as the single source of truth.
 
     return {
         "theme": {
