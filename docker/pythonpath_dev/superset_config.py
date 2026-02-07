@@ -29,7 +29,6 @@ from flask_caching.backends.filesystemcache import FileSystemCache
 
 logger = logging.getLogger()
 
-BRAND_SPINNER_URL = "/static/assets/images/remita_ellipses.gif"
 REDACT_SQL_IN_CHART_API = True
 REDACT_SQL_IN_CHART_API_ALLOW_ROLES = ["Admin", "SecurityAudit"]
 
