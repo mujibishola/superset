@@ -30,6 +30,8 @@ from flask_caching.backends.filesystemcache import FileSystemCache
 logger = logging.getLogger()
 
 BRAND_SPINNER_URL = "/static/assets/images/remita_ellipses.gif"
+REDACT_SQL_IN_CHART_API = True
+REDACT_SQL_IN_CHART_API_ALLOW_ROLES = ["Admin", "SecurityAudit"]
 
 DATABASE_DIALECT = os.getenv("DATABASE_DIALECT")
 DATABASE_USER = os.getenv("DATABASE_USER")
@@ -120,6 +122,27 @@ SQLLAB_CTAS_NO_LIMIT = True
 
 log_level_text = os.getenv("SUPERSET_LOG_LEVEL", "INFO")
 LOG_LEVEL = getattr(logging, log_level_text.upper(), logging.INFO)
+
+# -----------------------------------------------------------------------------
+# Theme overrides (dev)
+# -----------------------------------------------------------------------------
+# These overrides apply at bootstrap and let you brand the loader/logo.
+# Note: BRANDED_LOADER must be enabled in FEATURE_FLAGS.
+THEME_DEFAULT = {
+    "token": {
+        # Header/brand
+        "brandLogoUrl": "/static/assets/images/remita.png",
+        "brandLogoAlt": "Remita",
+        # Branded loader (URL); SVG takes precedence if also set via BRAND_SPINNER_SVG
+        "brandSpinnerUrl": BRAND_SPINNER_URL,
+    },
+    "algorithm": "default",
+}
+
+THEME_DARK = {
+    **THEME_DEFAULT,
+    "algorithm": "dark",
+}
 
 if os.getenv("CYPRESS_CONFIG") == "true":
     # When running the service as a cypress backend, we need to import the config
