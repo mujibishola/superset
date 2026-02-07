@@ -988,6 +988,9 @@ const config: ControlPanelConfig = {
   {
       label: t('Actions'),
       expanded: true,
+      // Ensure the entire section appears under the Customize tab
+      // regardless of inner control renderTrigger values
+      tabOverride: 'customize',
       controlSetRows: [
         [
           {
@@ -1009,27 +1012,7 @@ const config: ControlPanelConfig = {
             },
           },
         ],
-        [
-          {
-            name: 'actions_security_note',
-            config: {
-              type: DescriptionMarkdownControl,
-              label: t('Security & Embedding Notes'),
-              description: t('Information about action URL allowlist and messaging restrictions.'),
-              renderTrigger: false,
-              offerEditInModal: false,
-              tabOverride: 'customize',
-              // Static informational text; does not affect queries
-              default: (
-                [
-                  t('Outbound action URLs are restricted to same-origin by default. Cross-origin navigation is allowed only if the origin is in REMITA_TABLE_ALLOWED_ACTION_ORIGINS. In development, a wildcard (*) may allow all origins — do not enable in production.'),
-                  t('Embedded postMessage events are sent only to same-origin or allowlisted parent origins.'),
-                  t('Configure allowlist in superset/config.py: REMITA_TABLE_ALLOWED_ACTION_ORIGINS = ["https://example.com", ...]'),
-                ].join('\n\n')
-              ),
-            },
-          },
-        ],
+        // Removed obsolete Security & Embedding Notes block per request
       ],
     },
   ],

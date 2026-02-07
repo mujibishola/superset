@@ -134,58 +134,101 @@ const evaluateVisibilityCondition = (
 };
 
 /**
- * Evaluate multiple RLS visibility conditions (ALL must pass)
- * Returns an object with:
- * - visible: boolean indicating if all conditions pass
- * - matchingConditions: object with matching RLS key-value pairs
+ * Evaluate grouped visibility conditions.
+ * Supports both flat arrays of RLS conditions and grouped conditions with
+ * joinOperator/groupJoinOperator where entries may be source: 'column' or 'rls'.
  */
-const evaluateRlsVisibilityConditions = (
-  conditions: Array<{ rlsKey: string; operator: string; value: any }> | undefined,
+const evaluateGroupedVisibilityConditions = (
+  groupsOrConds:
+    | Array<{
+        rlsKey?: string;
+        operator: string;
+        value: any;
+        source?: 'column' | 'rls';
+        column?: string | string[];
+      }>
+    | Array<{
+        conditions: Array<{
+          rlsKey?: string;
+          operator: string;
+          value: any;
+          source?: 'column' | 'rls';
+          column?: string | string[];
+        }>;
+        joinOperator?: 'AND' | 'OR' | string;
+        groupJoinOperator?: 'AND' | 'OR' | string;
+      }>
+    | undefined,
+  row: Record<string, any>,
 ): { visible: boolean; matchingConditions: Record<string, any> } => {
-  if (!conditions || conditions.length === 0) {
+  if (!groupsOrConds || groupsOrConds.length === 0) {
     return { visible: true, matchingConditions: {} };
   }
 
+  const matchingRls: Record<string, any> = {};
   const rlsRules = getRlsExtraRules();
-  const matchingConditions: Record<string, any> = {};
 
-  for (const condition of conditions) {
-    const { rlsKey, operator, value: condValue } = condition;
-    const rlsValue = rlsRules[rlsKey];
-
-    // Evaluate this condition
+  const evalSingle = (cond: any): boolean => {
+    const src = (cond?.source as string) || 'rls';
+    if (src === 'column') {
+      return evaluateVisibilityCondition(cond, row);
+    }
+    // RLS-based
+    const rlsKey = cond?.rlsKey;
+    const op = String(cond?.operator || '').toUpperCase();
+    const val = cond?.value;
+    const rlsVal = rlsRules[rlsKey];
     let passes = false;
-    switch (operator) {
-      case "==":
-        passes = rlsValue == condValue;
+    switch (op) {
+      case '==':
+        passes = rlsVal == val;
         break;
-      case "!=":
-        passes = rlsValue != condValue;
+      case '!=':
+        passes = rlsVal != val;
         break;
-      case "IN": {
-        const list = String(condValue).split(",").map((s) => s.trim());
-        passes = list.includes(String(rlsValue));
+      case 'IN': {
+        const list = String(val).split(',').map((s: string) => s.trim());
+        passes = list.includes(String(rlsVal));
         break;
       }
-      case "NOT IN": {
-        const list = String(condValue).split(",").map((s) => s.trim());
-        passes = !list.includes(String(rlsValue));
+      case 'NOT IN': {
+        const list = String(val).split(',').map((s: string) => s.trim());
+        passes = !list.includes(String(rlsVal));
         break;
       }
       default:
         passes = false;
     }
+    if (passes && rlsKey) matchingRls[rlsKey] = rlsVal;
+    return passes;
+  };
 
-    // If any condition fails, action is not visible
-    if (!passes) {
-      return { visible: false, matchingConditions: {} };
+  const isGroup = Array.isArray((groupsOrConds as any)[0]?.conditions);
+  if (!isGroup) {
+    // Flat array of conditions; all must pass
+    for (const c of groupsOrConds as any[]) {
+      if (!evalSingle(c)) return { visible: false, matchingConditions: {} };
     }
-
-    // Track matching condition
-    matchingConditions[rlsKey] = rlsValue;
+    return { visible: true, matchingConditions: matchingRls };
   }
 
-  return { visible: true, matchingConditions };
+  // Grouped conditions
+  const groups = groupsOrConds as any[];
+  const groupResults: boolean[] = groups.map(g => {
+    const join = String(g?.joinOperator || 'AND').toUpperCase();
+    const conds = Array.isArray(g?.conditions) ? g.conditions : [];
+    if (conds.length === 0) return true;
+    if (join === 'OR') {
+      return conds.some(evalSingle);
+    }
+    // AND default
+    return conds.every(evalSingle);
+  });
+
+  // Combine across groups using the first group's groupJoinOperator (default AND)
+  const groupJoin = String(groups[0]?.groupJoinOperator || 'AND').toUpperCase();
+  const visible = groupJoin === 'OR' ? groupResults.some(Boolean) : groupResults.every(Boolean);
+  return { visible, matchingConditions: visible ? matchingRls : {} };
 };
 
 type RowActionPayload = {
@@ -203,13 +246,18 @@ export type RowActionConfig = {
   style?: 'default' | 'primary' | 'danger' | 'success' | 'warning';
   tooltip?: string;
   valueColumns?: string[];
-  visibilityCondition?: {
-    source?: 'column' | 'rls';
-    column?: string | string[];
-    rlsKey?: string;
-    operator?: string;
-    value?: any;
-  };
+  // Either a simple selection-based condition, or a column/RLS condition
+  visibilityCondition?:
+    | 'all'
+    | 'selected'
+    | 'unselected'
+    | {
+        source?: 'column' | 'rls';
+        column?: string | string[];
+        rlsKey?: string;
+        operator?: string;
+        value?: any;
+      };
   rlsVisibilityConditions?: Array<{
     rlsKey: string;
     operator: string;
@@ -227,6 +275,7 @@ export const ActionCell: React.FC<{
   chartId?: string | number;
   idColumn?: string;
   onActionClick: (actionInfo: RowActionPayload) => void;
+  isSelected?: boolean;
 }> = memo(({
                              rowId,
                              actions,
@@ -234,6 +283,7 @@ export const ActionCell: React.FC<{
                              chartId,
                              idColumn,
                            onActionClick,
+                           isSelected = false,
                          }) => {
   const theme = useTheme();
   const handleActionClick = (
@@ -271,17 +321,31 @@ export const ActionCell: React.FC<{
   // Filter and track RLS matching conditions for each action
   const visibleActionsWithRls = Array.from(actions as any)
     .map((config: RowActionConfig) => {
-      // Check single visibility condition (row column or single RLS)
-      const passesBasicVisibility = config?.visibilityCondition
-        ? evaluateVisibilityCondition(config.visibilityCondition, row)
-        : true;
+      // Check single visibility condition
+      let passesBasicVisibility = true;
+      const vc = config?.visibilityCondition as any;
+      if (vc) {
+        if (typeof vc === 'string') {
+          // Selection-based condition
+          passesBasicVisibility =
+            vc === 'all' ||
+            (vc === 'selected' && isSelected) ||
+            (vc === 'unselected' && !isSelected);
+        } else {
+          // Column/RLS-based condition
+          passesBasicVisibility = evaluateVisibilityCondition(vc, row);
+        }
+      }
 
       if (!passesBasicVisibility) {
         return null;
       }
 
-      // Check multiple RLS visibility conditions
-      const rlsResult = evaluateRlsVisibilityConditions(config.rlsVisibilityConditions);
+      // Check grouped visibility conditions (RLS and column-based), if any
+      const rlsResult = evaluateGroupedVisibilityConditions(
+        (config as any).rlsVisibilityConditions,
+        row,
+      );
       if (!rlsResult.visible) {
         return null;
       }

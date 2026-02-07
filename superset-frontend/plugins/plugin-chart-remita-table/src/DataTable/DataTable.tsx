@@ -177,8 +177,10 @@ export default typedMemo(function DataTable<D extends object>({
   const pageSizeRef = useRef([desiredPageSize, resultsSize]);
   // For server pagination, always check if pagination needed based on server page size
   // For client pagination, pageSize == 0 means no pagination
+  // For server pagination, render pagination controls whenever a positive page size is configured,
+  // even if total rowCount is unknown (0). This ensures the UI is present consistently.
   const hasPagination = serverPagination
-    ? (serverPageSizeForTable !== undefined && serverPageSizeForTable !== null && serverPageSizeForTable > 0 && resultsSize > 0)
+    ? (serverPageSizeForTable !== undefined && serverPageSizeForTable !== null && serverPageSizeForTable > 0)
     : (initialPageSize > 0 && resultsSize > 0);
   // Show controls if we have pagination, search, time comparison, or explicit page-size selector
   const showPageSizeControl = Boolean(selectPageSize);
@@ -195,17 +197,32 @@ export default typedMemo(function DataTable<D extends object>({
         if (col && typeof col === 'object') {
           const id = (col as any).id;
           const key = (col as any).columnKey;
-          if (id != null && key != null) colIdByKey.set(String(key), String(id));
+          if (id != null) {
+            // Map both columnKey and id to the internal id, so persisted orders
+            // that used either representation can be restored.
+            colIdByKey.set(String(id), String(id));
+          }
+          if (id != null && key != null) {
+            colIdByKey.set(String(key), String(id));
+          }
         }
       });
-      const idsFromSaved = savedKeys
+      // Resolve saved keys to current column ids
+      const resolvedFromSaved = savedKeys
         .map(k => colIdByKey.get(String(k)))
         .filter((v): v is string => Boolean(v));
-      const existingIds = new Set(idsFromSaved);
-      const remainingIds = (columns as any[])
-        .map(c => String((c as any).id))
-        .filter(id => !existingIds.has(id));
-      initialColumnOrder = [...idsFromSaved, ...remainingIds];
+
+      // Ensure selection checkbox column (id: 'selection') stays pinned first when present
+      const allIds = (columns as any[]).map(c => String((c as any).id));
+      const selectionId = allIds.find(id => id === 'selection');
+      let orderedIds = [...resolvedFromSaved];
+      if (selectionId) {
+        // Always keep selection column as the first column for consistent UX
+        orderedIds = [selectionId, ...orderedIds.filter(id => id !== selectionId)];
+      }
+      const existingIds = new Set(orderedIds);
+      const remainingIds = allIds.filter(id => !existingIds.has(id));
+      initialColumnOrder = [...orderedIds, ...remainingIds];
     }
   } catch {
     // ignore
@@ -836,12 +853,12 @@ export default typedMemo(function DataTable<D extends object>({
 
 
       {wrapStickyTable ? wrapStickyTable(renderTable) : renderTable()}
-      {hasPagination && resultPageCount > 1 ? (
+      {hasPagination ? (
         <SimplePagination
           ref={paginationRef}
           style={paginationStyle}
           maxPageItemCount={maxPageItemCount}
-          pageCount={resultPageCount}
+          pageCount={serverPagination ? Math.max(1, resultPageCount || 0) : resultPageCount}
           currentPage={resultCurrentPage}
           onPageChange={resultOnPageChange}
         />

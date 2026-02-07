@@ -175,10 +175,16 @@ export const BulkActions: React.FC<BulkActionProps> = memo(({
     dropdown: !showSplitInSliceHeader
       ? splitActions.filter(action => {
           // Check selection-based visibility
-          const selectionVisible = action.visibilityCondition === 'all' ||
-            action.visibilityCondition === 'selected' ||
-            (action.visibilityCondition === 'unselected' && !hasSelection) ||
-            !action.visibilityCondition;
+          const cond = (action as any)?.visibilityCondition as
+            | 'all'
+            | 'selected'
+            | 'unselected'
+            | undefined;
+          const selectionVisible =
+            cond === 'all' ||
+            (cond === 'selected' && hasSelection) ||
+            (cond === 'unselected' && !hasSelection) ||
+            cond === undefined;
 
           // Check RLS visibility conditions (ALL must pass)
           const rlsVisible = evaluateRlsVisibilityConditions(action.rlsVisibilityConditions);
@@ -193,10 +199,16 @@ export const BulkActions: React.FC<BulkActionProps> = memo(({
       if (action.showInSliceHeader) return false;
 
       // Check selection-based visibility
-      const selectionVisible = action.visibilityCondition === 'all' ||
-        action.visibilityCondition === 'selected' ||
-        (action.visibilityCondition === 'unselected' && !hasSelection) ||
-        !action.visibilityCondition;
+      const cond = (action as any)?.visibilityCondition as
+        | 'all'
+        | 'selected'
+        | 'unselected'
+        | undefined;
+      const selectionVisible =
+        cond === 'all' ||
+        (cond === 'selected' && hasSelection) ||
+        (cond === 'unselected' && !hasSelection) ||
+        cond === undefined;
 
       // Check RLS visibility conditions (ALL must pass)
       const rlsVisible = evaluateRlsVisibilityConditions(action.rlsVisibilityConditions);
