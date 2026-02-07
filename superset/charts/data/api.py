@@ -447,7 +447,29 @@ class ChartDataRestApi(ChartRestApi):
 
         if result_format == ChartDataResultFormat.JSON:
             queries = result["queries"]
-            if security_manager.is_guest_user():
+            # Redact SQL for guests always, and optionally for non-allowlisted roles
+            try:
+                redact_all = bool(app.config.get("REDACT_SQL_IN_CHART_API", False))
+            except Exception:
+                redact_all = False
+
+            should_redact = security_manager.is_guest_user() or redact_all
+            if redact_all and not security_manager.is_guest_user():
+                try:
+                    allow_roles = set(
+                        app.config.get(
+                            "REDACT_SQL_IN_CHART_API_ALLOW_ROLES", ["Admin"]
+                        )
+                    )
+                    user_roles = set(r.name for r in (getattr(g, "user", None) or []).roles)  # type: ignore[attr-defined]
+                    # If user has any role in allowlist, don't redact
+                    if allow_roles & user_roles:
+                        should_redact = False
+                except Exception:
+                    # If role detection fails, keep redaction enabled for safety
+                    should_redact = True
+
+            if should_redact:
                 for query in queries:
                     query.pop("query", None)
             with event_logger.log_context(f"{self.__class__.__name__}.json_dumps"):

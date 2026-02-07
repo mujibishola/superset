@@ -2528,3 +2528,15 @@ for env_var in ENV_VAR_KEYS:
 # component will prefer these values over the default spinner.
 BRAND_SPINNER_URL: str | None = None  # e.g., "/static/assets/images/my-spinner.svg"
 BRAND_SPINNER_SVG: str | None = None  # inline SVG markup as a string
+# -----------------------------------------------------------------------------
+# API Response Redaction (Security)
+# -----------------------------------------------------------------------------
+# Redact raw SQL from chart data API JSON responses. Frontend typically doesn't
+# rely on the SQL text, so redacting avoids leaking sensitive queries.
+#
+# By default this is disabled to avoid surprising environments that post-process
+# the API output. Enable in production.
+REDACT_SQL_IN_CHART_API: bool = True
+# Roles allowed to receive SQL in API responses when redaction is enabled.
+# Typically keep Admin only. Use role names as strings.
+REDACT_SQL_IN_CHART_API_ALLOW_ROLES: list[str] = ["Admin"]
