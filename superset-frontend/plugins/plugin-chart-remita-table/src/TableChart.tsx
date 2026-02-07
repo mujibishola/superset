@@ -2745,14 +2745,22 @@ function TableChartInner<D extends DataRecord = DataRecord>(
           </th>
         ),
         Cell: ({row}: { row: Row<D> }) => {
+          // Determine this row's selection state using current selection map
+          const rid = String(
+            (row.original as any)[row_id_column as keyof D] ??
+              (row.original as any)[KEY_FIELD] ??
+              row.index,
+          );
+          const rowIsSelected = selectedRowsRef.current.has(rid);
           return (
             <ActionCell
-              rowId={tableActionsConfig.idColumn}
+              rowId={rid}
               actions={tableActionsConfig.actions}
               row={row.original}
               chartId={chartId}
-              idColumn ={tableActionsConfig.idColumn}
+              idColumn={tableActionsConfig.idColumn}
               onActionClick={handleTableAction}
+              isSelected={rowIsSelected}
             />
           );
         },
@@ -3077,8 +3085,8 @@ function TableChartInner<D extends DataRecord = DataRecord>(
           // Advanced filters toggle removed
           renderRightControls={() => (
             <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
-              {/* Filters tag with total active conditions; closing clears staged filters (requires Search to apply) */}
-              {(() => {
+              {/* Filters tag appears only when advanced column filters are enabled */}
+              {props.enableAdvancedColumnFilters && (() => {
                 const totalFilters = (() => {
                   try {
                     return Object.values(advancedFilters || {}).reduce((acc: number, cfg: any) => acc + (Array.isArray(cfg?.conditions) ? cfg.conditions.length : 0), 0);
