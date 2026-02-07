@@ -194,7 +194,9 @@ const updateHistory = debounce(
     try {
       let key;
       let stateModifier;
-      if (isReplace) {
+      const existingKey = getUrlParam(URL_PARAMS.formDataKey);
+      // If we are replacing, or there's no existing key yet, POST to create one
+      if (isReplace || !existingKey) {
         key = await postFormData(
           datasourceId,
           datasourceType,
@@ -202,9 +204,10 @@ const updateHistory = debounce(
           chartId,
           tabId,
         );
-        stateModifier = 'replaceState';
+        // Use replace on first key write to avoid building history stack unnecessarily
+        stateModifier = isReplace || !existingKey ? 'replaceState' : 'pushState';
       } else {
-        key = getUrlParam(URL_PARAMS.formDataKey);
+        key = existingKey;
         await putFormData(
           datasourceId,
           datasourceType,

@@ -759,25 +759,51 @@ const transformProps = (
   let totalQuery;
   let rowCount;
   if (serverPagination) {
-    // Support optional exact rowcount query (second query) for performance
-    if (queriesData.length >= 2 && (queriesData[1] as any)?.is_rowcount) {
-      [baseQuery, countQuery, totalQuery] = queriesData;
+    // Robustly identify base/count/total queries from response ordering
+    baseQuery = queriesData?.[0];
+    const extras = queriesData.slice(1);
+    // Find a query whose first row has a numeric `rowcount` field
+    const countIdx = extras.findIndex(q =>
+      Array.isArray((q as any)?.data) &&
+      (q as any).data.length > 0 &&
+      typeof (q as any).data?.[0]?.rowcount === 'number',
+    );
+    if (countIdx >= 0) {
+      countQuery = extras[countIdx];
+      // Heuristically pick totals as the other extra (if present)
+      totalQuery = extras.find((_, i) => i !== countIdx);
     } else {
-      // Only base query (and possibly totals for aggregate) were returned
-      [baseQuery, totalQuery] = queriesData;
+      // No explicit count response; treat first extra (if any) as totals
+      totalQuery = extras?.[0];
       countQuery = undefined as any;
+      try {
+        // Surface a hint in dev tools when exact-rowcount is enabled but no count payload returned
+        const wantsExact = (chartProps as any)?.rawFormData?.server_rowcount_exact;
+        if (wantsExact) {
+          // eslint-disable-next-line no-console
+          console.warn('[Remita Table] Exact total row count requested but no count response detected. Ensure backend returns a count query with data: [{ rowcount: <number> }].');
+        }
+      } catch {}
     }
-    const exactCount = (countQuery?.data?.[0]?.rowcount as number) ?? undefined;
-    if (exactCount !== undefined) {
-      rowCount = exactCount;
+
+    const exactCountRaw = (countQuery as any)?.data?.[0]?.rowcount as number | undefined;
+    const hasExact = typeof exactCountRaw === 'number' && Number.isFinite(exactCountRaw);
+    if (hasExact) {
+      rowCount = exactCountRaw;
     } else {
-      // Fallback: try baseQuery.rowcount if backend provides it; otherwise lower-bound estimate
+      // Prefer a valid positive baseQuery.rowcount if provided, otherwise use a conservative heuristic
       const currentPage = (serverPaginationData as any)?.currentPage ?? 0;
       const effectivePageSize = (serverPaginationData as any)?.pageSize ?? serverPageLength;
-      const pageDataLen = baseQuery?.data?.length || 0;
-      const lowerBound = currentPage * effectivePageSize + pageDataLen;
-      const maybeMore = pageDataLen === effectivePageSize ? effectivePageSize : 0;
-      rowCount = (baseQuery?.rowcount as number) ?? (lowerBound + maybeMore);
+      const pageDataLen = Array.isArray(baseQuery?.data) ? baseQuery!.data.length : 0;
+      const baseCount = Number((baseQuery as any)?.rowcount);
+      if (Number.isFinite(baseCount) && baseCount > 0) {
+        rowCount = baseCount;
+      } else {
+        // Heuristic: rows seen so far + assume at least one more page if current page is full
+        const lowerBound = currentPage * effectivePageSize + pageDataLen;
+        const maybeMore = pageDataLen === effectivePageSize ? effectivePageSize : 0;
+        rowCount = lowerBound + maybeMore;
+      }
     }
   } else {
     [baseQuery, totalQuery] = queriesData;
